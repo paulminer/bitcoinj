@@ -308,6 +308,12 @@ public class MemoryFullPrunedBlockStore implements FullPrunedBlockStore {
     @Override
     @Nullable
     public synchronized StoredUndoableBlock getUndoBlock(Sha256Hash hash) throws BlockStoreException {
+        return getUndoBlock(hash, false);
+    }
+    
+    @Override
+    @Nullable
+    public synchronized StoredUndoableBlock getUndoBlock(Sha256Hash hash, boolean getRawBlockData) throws BlockStoreException {
         Preconditions.checkNotNull(fullBlockMap, "MemoryFullPrunedBlockStore is closed");
         return fullBlockMap.get(hash);
     }

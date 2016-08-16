@@ -33,17 +33,28 @@ public class StoredUndoableBlock {
     // Only one of either txOutChanges or transactions will be set
     private TransactionOutputChanges txOutChanges;
     private List<Transaction> transactions;
+    private byte[] rawBlockData;
     
     public StoredUndoableBlock(Sha256Hash hash, TransactionOutputChanges txOutChanges) {
+        this(hash, txOutChanges, null);
+    }
+    
+    public StoredUndoableBlock(Sha256Hash hash, TransactionOutputChanges txOutChanges, byte[] rawBlockData) {
         this.blockHash = hash;
         this.transactions = null;
         this.txOutChanges = txOutChanges;
+        this.rawBlockData = rawBlockData;
     }
     
     public StoredUndoableBlock(Sha256Hash hash, List<Transaction> transactions) {
+        this(hash, transactions, null);
+    }
+    
+    public StoredUndoableBlock(Sha256Hash hash, List<Transaction> transactions, byte[] rawBlockData) {
         this.blockHash = hash;
         this.txOutChanges = null;
         this.transactions = transactions;
+        this.rawBlockData = rawBlockData;
     }
     
     /**
@@ -60,6 +71,10 @@ public class StoredUndoableBlock {
      */
     public List<Transaction> getTransactions() {
         return transactions;
+    }
+    
+    public byte[] getRawBlockData() {
+        return rawBlockData;
     }
     
     /**

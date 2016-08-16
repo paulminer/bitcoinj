@@ -435,7 +435,7 @@ public abstract class NetworkParameters {
                     // As the serializers are intended to be immutable, creating
                     // two due to a race condition should not be a problem, however
                     // to be safe we ensure only one exists for each network.
-                    this.defaultSerializer = getSerializer(false);
+                    this.defaultSerializer = getSerializer(true);
                 }
             }
         }

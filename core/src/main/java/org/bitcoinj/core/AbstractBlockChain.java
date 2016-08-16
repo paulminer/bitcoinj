@@ -296,7 +296,7 @@ public abstract class AbstractBlockChain {
      * @param block The {@link Block} to add/update.
      * @return the newly created {@link StoredBlock}
      */
-    protected abstract StoredBlock addToBlockStore(StoredBlock storedPrev, Block block)
+    protected abstract StoredBlock addToBlockStore(StoredBlock storedPrev, Block block, byte[] rawBlockData)
             throws BlockStoreException, VerificationException;
     
     /**
@@ -309,7 +309,8 @@ public abstract class AbstractBlockChain {
      * @return the newly created {@link StoredBlock}
      */
     protected abstract StoredBlock addToBlockStore(StoredBlock storedPrev, Block header,
-                                                   @Nullable TransactionOutputChanges txOutputChanges)
+                                                   @Nullable TransactionOutputChanges txOutputChanges,
+                                                   byte[] rawBlockData)
             throws BlockStoreException, VerificationException;
 
     /**
@@ -560,7 +561,7 @@ public abstract class AbstractBlockChain {
             if (shouldVerifyTransactions())
                 txOutChanges = connectTransactions(storedPrev.getHeight() + 1, block);
             StoredBlock newStoredBlock = addToBlockStore(storedPrev,
-                    block.transactions == null ? block : block.cloneAsHeader(), txOutChanges);
+                    block.transactions == null ? block : block.cloneAsHeader(), txOutChanges, block.unsafeBitcoinSerialize());
             versionTally.add(block.getVersion());
             setChainHead(newStoredBlock);
             log.debug("Chain is now {} blocks high, running listeners", newStoredBlock.getHeight());
@@ -591,7 +592,7 @@ public abstract class AbstractBlockChain {
                     throw new VerificationException("Block forks the chain but splitPoint is null");
                 } else {
                     // We aren't actually spending any transactions (yet) because we are on a fork
-                    addToBlockStore(storedPrev, block);
+                    addToBlockStore(storedPrev, block, block.unsafeBitcoinSerialize());
                     int splitPointHeight = splitPoint.getHeight();
                     String splitPointHash = splitPoint.getHeader().getHashAsString();
                     log.info("Block forks the chain at height {}/block {}, but it did not cause a reorganize:\n{}",
@@ -782,11 +783,12 @@ public abstract class AbstractBlockChain {
                     txOutChanges = connectTransactions(cursor);
                 else
                     txOutChanges = connectTransactions(newChainHead.getHeight(), block);
-                storedNewHead = addToBlockStore(storedNewHead, cursorBlock.cloneAsHeader(), txOutChanges);
+                storedNewHead = addToBlockStore(storedNewHead, cursorBlock.cloneAsHeader(), txOutChanges,
+                                                cursorBlock.getHash().equals(block.getHash()) ? block.unsafeBitcoinSerialize() : null);
             }
         } else {
             // (Finally) write block to block store
-            storedNewHead = addToBlockStore(storedPrev, newChainHead.getHeader());
+            storedNewHead = addToBlockStore(storedPrev, newChainHead.getHeader(), block.unsafeBitcoinSerialize());
         }
         // Now inform the listeners. This is necessary so the set of currently active transactions (that we can spend)
         // can be updated to take into account the re-organize. We might also have received new coins we didn't have

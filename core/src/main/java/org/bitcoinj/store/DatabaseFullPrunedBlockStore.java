@@ -109,7 +109,8 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
     private static final String UPDATE_HEADERS_SQL                              = "UPDATE headers SET wasundoable=? WHERE hash=?";
 
     private static final String SELECT_UNDOABLEBLOCKS_SQL                       = "SELECT txoutchanges, transactions FROM undoableblocks WHERE hash = ?";
-    private static final String INSERT_UNDOABLEBLOCKS_SQL                       = "INSERT INTO undoableblocks(hash, height, txoutchanges, transactions) VALUES(?, ?, ?, ?)";
+    private static final String SELECT_UNDOABLEBLOCKS_WITH_RAW_SQL              = "SELECT txoutchanges, transactions, rawblockdata FROM undoableblocks WHERE hash = ?";
+    private static final String INSERT_UNDOABLEBLOCKS_SQL                       = "INSERT INTO undoableblocks(hash, height, txoutchanges, transactions, rawblockdata) VALUES(?, ?, ?, ?, ?)";
     private static final String UPDATE_UNDOABLEBLOCKS_SQL                       = "UPDATE undoableblocks SET txoutchanges=?, transactions=? WHERE hash = ?";
     private static final String DELETE_UNDOABLEBLOCKS_SQL                       = "DELETE FROM undoableblocks WHERE height <= ?";
 
@@ -121,7 +122,7 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
     // Dump table SQL (this is just for data sizing statistics).
     private static final String SELECT_DUMP_SETTINGS_SQL                        = "SELECT name, value FROM settings";
     private static final String SELECT_DUMP_HEADERS_SQL                         = "SELECT chainwork, header FROM headers";
-    private static final String SELECT_DUMP_UNDOABLEBLOCKS_SQL                  = "SELECT txoutchanges, transactions FROM undoableblocks";
+    private static final String SELECT_DUMP_UNDOABLEBLOCKS_SQL                  = "SELECT txoutchanges, transactions, rawblockdata FROM undoableblocks";
     private static final String SELECT_DUMP_OPENOUTPUTS_SQL                     = "SELECT value, scriptbytes FROM openoutputs";
 
     private static final String SELECT_TRANSACTION_OUTPUTS_SQL                  = "SELECT hash, value, scriptbytes, height, index, coinbase, toaddress, addresstargetable FROM openoutputs where toaddress = ?";
@@ -326,6 +327,14 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
      */
     protected String getSelectUndoableBlocksSQL() {
         return SELECT_UNDOABLEBLOCKS_SQL;
+    }
+
+    /**
+     * Get the SQL to select an undoableblocks record with rawblockdata.
+     * @return The SQL select statement.
+     */
+    protected String getSelectUndoableBlocksWithRawSQL() {
+        return SELECT_UNDOABLEBLOCKS_WITH_RAW_SQL;
     }
 
     /**
@@ -678,6 +687,7 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
         int height = storedBlock.getHeight();
         byte[] transactions = null;
         byte[] txOutChanges = null;
+        byte[] rawBlockData = undoableBlock.getRawBlockData();
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             if (undoableBlock.getTxOutChanges() != null) {
@@ -710,6 +720,11 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
                 } else {
                     s.setNull(3, Types.BINARY);
                     s.setBytes(4, transactions);
+                }
+                if (rawBlockData == null) {
+                    s.setNull(5, Types.BINARY);
+                } else {
+                    s.setBytes(5, rawBlockData);
                 }
                 s.executeUpdate();
                 s.close();
@@ -801,11 +816,16 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
 
     @Override
     public StoredUndoableBlock getUndoBlock(Sha256Hash hash) throws BlockStoreException {
+        return getUndoBlock(hash, false);
+    }
+    
+    @Override
+    public StoredUndoableBlock getUndoBlock(Sha256Hash hash, boolean getRawBlockData) throws BlockStoreException {
         maybeConnect();
         PreparedStatement s = null;
         try {
             s = conn.get()
-                    .prepareStatement(getSelectUndoableBlocksSQL());
+                    .prepareStatement(getRawBlockData ? getSelectUndoableBlocksWithRawSQL() : getSelectUndoableBlocksSQL());
             // We skip the first 4 bytes because (on mainnet) the minimum target has 4 0-bytes
             s.setBytes(1, getTruncatedHashBytes(hash.getBytes()));
             ResultSet results = s.executeQuery();
@@ -815,6 +835,7 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
             // Parse it.
             byte[] txOutChanges = results.getBytes(1);
             byte[] transactions = results.getBytes(2);
+            byte[] rawBlockData = getRawBlockData ? results.getBytes(3) : null;
             StoredUndoableBlock block;
             if (txOutChanges == null) {
                 int offset = 0;
@@ -828,11 +849,11 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
                     transactionList.add(tx);
                     offset += tx.getMessageSize();
                 }
-                block = new StoredUndoableBlock(hash, transactionList);
+                block = new StoredUndoableBlock(hash, transactionList, rawBlockData);
             } else {
                 TransactionOutputChanges outChangesObject =
                         new TransactionOutputChanges(new ByteArrayInputStream(txOutChanges));
-                block = new StoredUndoableBlock(hash, outChangesObject);
+                block = new StoredUndoableBlock(hash, outChangesObject, rawBlockData);
             }
             return block;
         } catch (SQLException ex) {
@@ -1228,6 +1249,10 @@ public abstract class DatabaseFullPrunedBlockStore implements FullPrunedBlockSto
                     size += transactions.length;
                 else
                     size += txOutChanges.length;
+                byte[] rawBlockData = rs.getBytes(3);
+                if (rawBlockData != null) {
+                    size += rawBlockData.length;
+                }
                 // size += the space to represent NULL
                 count++;
             }

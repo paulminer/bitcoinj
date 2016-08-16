@@ -506,6 +506,7 @@ public class LevelDBFullPrunedBlockStore implements FullPrunedBlockStore {
         int height = storedBlock.getHeight();
         byte[] transactions = null;
         byte[] txOutChanges = null;
+        byte[] rawBlockData = undoableBlock.getRawBlockData();
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             if (undoableBlock.getTxOutChanges() != null) {
@@ -533,22 +534,28 @@ public class LevelDBFullPrunedBlockStore implements FullPrunedBlockStore {
         keyBuf.putInt(height);
         keyBuf.put(hash.getBytes(), 4, 28);
         batchPut(keyBuf.array(), new byte[1]);
-
+        
+        int bufferSize = 16 + ((transactions == null) ? txOutChanges.length : transactions.length) + ((rawBlockData == null) ? 0 : rawBlockData.length);
+        ByteBuffer undoBuf = ByteBuffer.allocate(bufferSize);
         if (transactions == null) {
-            ByteBuffer undoBuf = ByteBuffer.allocate(4 + 4 + txOutChanges.length + 4 + 0);
             undoBuf.putInt(height);
             undoBuf.putInt(txOutChanges.length);
             undoBuf.put(txOutChanges);
             undoBuf.putInt(0);
-            batchPut(getKey(KeyType.UNDOABLEBLOCKS_ALL, hash), undoBuf.array());
         } else {
-            ByteBuffer undoBuf = ByteBuffer.allocate(4 + 4 + 0 + 4 + transactions.length);
             undoBuf.putInt(height);
             undoBuf.putInt(0);
             undoBuf.putInt(transactions.length);
             undoBuf.put(transactions);
-            batchPut(getKey(KeyType.UNDOABLEBLOCKS_ALL, hash), undoBuf.array());
         }
+        if (rawBlockData == null) {
+            undoBuf.putInt(0);
+        }
+        else {
+            undoBuf.putInt(rawBlockData.length);
+            undoBuf.put(rawBlockData);
+        }
+        batchPut(getKey(KeyType.UNDOABLEBLOCKS_ALL, hash), undoBuf.array());
         if (instrument)
             endMethod("put");
         putUpdateStoredBlock(storedBlock, true);
@@ -650,6 +657,11 @@ public class LevelDBFullPrunedBlockStore implements FullPrunedBlockStore {
 
     @Override
     public StoredUndoableBlock getUndoBlock(Sha256Hash hash) throws BlockStoreException {
+        return getUndoBlock(hash, false);
+    }
+    
+    @Override
+    public StoredUndoableBlock getUndoBlock(Sha256Hash hash, boolean getRawBlockData) throws BlockStoreException {
         try {
             if (instrument)
                 beginMethod("getUndoBlock");
@@ -680,14 +692,27 @@ public class LevelDBFullPrunedBlockStore implements FullPrunedBlockStore {
                     transactionList.add(tx);
                     offset += tx.getMessageSize();
                 }
-                block = new StoredUndoableBlock(hash, transactionList);
+                byte[] rawBlockData = null;
+                if (getRawBlockData) {
+                    int rawBlockDataSize = bb.getInt();
+                    rawBlockData = new byte[rawBlockDataSize];
+                    bb.get(rawBlockData);
+                }
+                block = new StoredUndoableBlock(hash, transactionList, rawBlockData);
             } else {
                 byte[] txOutChanges = new byte[txOutSize];
                 bb.get(txOutChanges);
                 TransactionOutputChanges outChangesObject = new TransactionOutputChanges(
                         new ByteArrayInputStream(txOutChanges));
-                block = new StoredUndoableBlock(hash, outChangesObject);
+                byte[] rawBlockData = null;
+                if (getRawBlockData) {
+                    int rawBlockDataSize = bb.getInt();
+                    rawBlockData = new byte[rawBlockDataSize];
+                    bb.get(rawBlockData);
+                }
+                block = new StoredUndoableBlock(hash, outChangesObject, rawBlockData);
             }
+            
             if (instrument)
                 endMethod("getUndoBlock");
             return block;

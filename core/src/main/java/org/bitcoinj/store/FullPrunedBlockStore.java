@@ -70,6 +70,7 @@ public interface FullPrunedBlockStore extends BlockStore, UTXOProvider {
      * {@link StoredBlock}s have a {@link StoredUndoableBlock} copy stored as well.
      */
     StoredUndoableBlock getUndoBlock(Sha256Hash hash) throws BlockStoreException;
+    StoredUndoableBlock getUndoBlock(Sha256Hash hash, boolean getRawBlockData) throws BlockStoreException;
     
     /**
      * Gets a {@link org.bitcoinj.core.UTXO} with the given hash and index, or null if none is found

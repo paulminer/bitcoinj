@@ -53,6 +53,7 @@ public class MySQLFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
             "    height integer NOT NULL,\n" +
             "    txoutchanges mediumblob,\n" +
             "    transactions mediumblob,\n" +
+            "    rawblockdata mediumblob,\n" +
             "    CONSTRAINT undoableblocks_pk PRIMARY KEY (hash) USING BTREE \n" +
             ")\n";
 

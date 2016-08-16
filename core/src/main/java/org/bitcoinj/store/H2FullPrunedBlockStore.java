@@ -56,7 +56,8 @@ public class H2FullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
             + "hash BINARY(28) NOT NULL CONSTRAINT undoableblocks_pk PRIMARY KEY,"
             + "height INT NOT NULL,"
             + "txoutchanges BLOB,"
-            + "transactions BLOB"
+            + "transactions BLOB,"
+            + "rawblockdata BLOB"
             + ")";
 
     private static final String CREATE_OPEN_OUTPUT_TABLE = "CREATE TABLE openoutputs ("

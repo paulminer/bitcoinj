@@ -67,6 +67,7 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
             "    height integer NOT NULL,\n" +
             "    txoutchanges bytea,\n" +
             "    transactions bytea,\n" +
+            "    rawblockdata bytea,\n" +
             "    CONSTRAINT undoableblocks_pk PRIMARY KEY (hash)\n" +
             ")\n";
 
@@ -98,7 +99,7 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
     // - the "excluded" table is a special table defined to be the rows that were going to be inserted, but failed. This allows us to
     //   specify values once in the INSERT clause, and reuse them in the UPDATE clause.
     private static final String UPSERT_HEADERS_SQL                      = "INSERT INTO headers(hash, chainwork, height, header, wasundoable) VALUES(?, ?, ?, ?, ?) ON CONFLICT (hash) DO UPDATE SET wasundoable=EXCLUDED.wasundoable";
-    private static final String UPSERT_UNDOABLEBLOCKS_SQL               = "INSERT INTO undoableblocks(hash, height, txoutchanges, transactions) VALUES(?, ?, ?, ?) ON CONFLICT (hash) DO UPDATE SET txoutchanges=EXCLUDED.txoutchanges, transactions=EXCLUDED.transactions";
+    private static final String UPSERT_UNDOABLEBLOCKS_SQL               = "INSERT INTO undoableblocks(hash, height, txoutchanges, transactions, rawblockdata) VALUES(?, ?, ?, ?, ?) ON CONFLICT (hash) DO UPDATE SET txoutchanges=EXCLUDED.txoutchanges, transactions=EXCLUDED.transactions";
     
     protected final ThreadLocal<Long> supportsOnConflict = new ThreadLocal<Long>();
     /**
@@ -178,6 +179,13 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
     }
     
     protected boolean isSupportsOnConflict() {
+        if (supportsOnConflict == null) {
+            // The DatabaseFullPrunedBlockStore constructor may call createNewStore() which calls overridden method put(),
+            // before this class's constructor has been executed (and initialized final fields). This is a workaround for
+            // that problem.
+            return false;
+        }
+        
         Connection conn = this.conn.get();
         Long n = supportsOnConflict.get();
         if (n != null) {
@@ -262,6 +270,7 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
         int height = storedBlock.getHeight();
         byte[] transactions = null;
         byte[] txOutChanges = null;
+        byte[] rawBlockData = undoableBlock.getRawBlockData();
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             if (undoableBlock.getTxOutChanges() != null) {
@@ -298,6 +307,12 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
                 } else {
                     s.setNull(3, Types.BINARY);
                     s.setBytes(4, transactions);
+                }
+                
+                if (rawBlockData == null) {
+                    s.setNull(5, Types.BINARY);
+                } else {
+                    s.setBytes(5, rawBlockData);
                 }
                 s.executeUpdate();
                 s.close();
@@ -337,6 +352,11 @@ public class PostgresFullPrunedBlockStore extends DatabaseFullPrunedBlockStore {
                 } else {
                     s.setNull(3, Types.BINARY);
                     s.setBytes(4, transactions);
+                }
+                if (rawBlockData == null) {
+                    s.setNull(5, Types.BINARY);
+                } else {
+                    s.setBytes(5, rawBlockData);
                 }
                 s.executeUpdate();
                 s.close();
